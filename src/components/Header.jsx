@@ -6,6 +6,7 @@ const NAV = [
   { href: '#proyecto', label: 'Proyecto' },
   { href: '#estructura', label: 'Estructura' },
   { href: '#cronograma', label: 'Cronograma' },
+  { href: '#donadores', label: 'Donadores' },
   { href: '#aliados', label: 'Aliados' },
   { href: '#equipo', label: 'Equipo' },
 ]
