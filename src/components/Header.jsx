@@ -11,8 +11,11 @@ const NAV = [
   { href: '#equipo', label: 'Equipo' },
 ]
 
-export default function Header({ onDonar, onConvocatoria }) {
+export default function Header({ onDonar, onConvocatoria, donantes = [] }) {
   const [open, setOpen] = useState(false)
+  const navItems = donantes.length > 0
+    ? NAV
+    : NAV.filter((n) => n.href !== '#donadores')
 
   return (
     <header className="sticky top-0 z-50 border-b border-gold/20 bg-ink-deep/85 backdrop-blur-md">
@@ -26,7 +29,7 @@ export default function Header({ onDonar, onConvocatoria }) {
         </a>
 
         <nav className="hidden items-center gap-7 font-label text-[13px] font-medium text-parchment/80 md:flex">
-          {NAV.map((n) => (
+          {navItems.map((n) => (
             <a key={n.href} href={n.href} className="transition hover:text-gold-bright">
               {n.label}
             </a>
@@ -63,7 +66,7 @@ export default function Header({ onDonar, onConvocatoria }) {
             className="overflow-hidden border-t border-gold/20 bg-ink-deep md:hidden"
           >
             <div className="flex flex-col gap-1 px-6 py-4">
-              {NAV.map((n) => (
+              {navItems.map((n) => (
                 <a
                   key={n.href}
                   href={n.href}

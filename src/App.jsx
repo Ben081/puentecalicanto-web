@@ -23,7 +23,7 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      <Header onDonar={() => setDonarOpen(true)} onConvocatoria={() => setConvocatoriaOpen(true)} />
+      <Header onDonar={() => setDonarOpen(true)} onConvocatoria={() => setConvocatoriaOpen(true)} donantes={donantes} />
       <Hero onDonar={() => setDonarOpen(true)} />
       <Proyecto />
       <Rounds />
