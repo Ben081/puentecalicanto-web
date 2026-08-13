@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta — calicanto: piedra, fe y música litúrgica (refinada) */
+  --color-ink: #1a1726;
+  --color-ink-deep: #0f0d17;
+  --color-parchment: #f7f2ea;
+  --color-parchment-dim: #e8e0d0;
+  --color-gold: #d4a92b;
+  --color-gold-bright: #e8c44e;
+  --color-battle: #7a35b8;
+  --color-battle-bright: #9a52d8;
+  --color-sage: #528a62;
+  --color-text-on-parchment: #1a1726;
+  --color-stone: #9490a5;
+
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-label: "Space Grotesk", ui-sans-serif, sans-serif;
+  --font-body: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Easing curves — emil-design-eng */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Duration tokens */
+  --duration-fast: 160ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+
+  --animate-vinyl-spin: vinyl-spin 3.5s linear infinite;
+}
+
+@keyframes vinyl-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  font-family: var(--font-body);
+  color: var(--color-parchment);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-battle) 45%, transparent);
+  color: var(--color-parchment);
+}
+
+/* Borde tipo "iluminación manuscrita" reutilizable */
+.illuminated-border {
+  position: relative;
+  border: 1px solid color-mix(in oklab, var(--color-gold) 55%, transparent);
+}
+.illuminated-border::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid color-mix(in oklab, var(--color-gold) 25%, transparent);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Button tactile feedback — emil-design-eng */
+button, a[href] {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+button:active, a[href]:active {
+  transform: scale(0.97);
+}
+
+/* Focus visible for accessibility */
+button:focus-visible, a[href]:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+/* Hover gating — touch devices fire false hovers */
+@media (hover: hover) and (pointer: fine) {
+  .hover-lift {
+    transition: transform var(--duration-normal) var(--ease-out);
+  }
+  .hover-lift:hover {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Keep opacity transitions for comprehension */
+  .reduced-motion-safe {
+    transition: opacity 0.2s ease !important;
+  }
+}
