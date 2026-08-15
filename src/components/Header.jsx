@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X } from 'lucide-react'
 
 const NAV = [
+  { href: 'https://frate.lat', label: 'FRATE' },
   { href: '#proyecto', label: 'Proyecto' },
   { href: '#estructura', label: 'Estructura' },
   { href: '#cronograma', label: 'Cronograma' },
