@@ -1,9 +1,28 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Heart, CheckCircle2 } from 'lucide-react'
+import { X, Heart, CheckCircle2, Clock } from 'lucide-react'
 import { normalizeFullName } from '../utils/normalizeName'
 import useConfigFrate, { API_BASE } from '../hooks/useConfigFrate'
 
+const PROYECTO = 'puente-calicanto'
+
+// ── Helper: carga un <script> una sola vez, aunque se llame varias veces ──
+const scriptsCargados = {}
+function cargarScript(src) {
+  if (scriptsCargados[src]) return scriptsCargados[src]
+  scriptsCargados[src] = new Promise((resolve, reject) => {
+    const el = document.createElement('script')
+    el.src = src
+    el.onload = resolve
+    el.onerror = reject
+    document.body.appendChild(el)
+  })
+  return scriptsCargados[src]
+}
+
+// Los pasos: monto -> pago (Culqi) -> datos (anónimo o no) -> confirmación
+// Si el donante paga con Yape-QR/Plin (billetera), el flujo salta directo
+// a 'pendiente_billetera', porque esos pagos se confirman después, por webhook.
 export default function DonarModal({ open, onClose, onDonacionCompletada }) {
   const { config } = useConfigFrate()
   const [step, setStep] = useState('monto')
@@ -15,6 +34,9 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
   const [apellido, setApellido] = useState('')
   const [autoriza, setAutoriza] = useState(false)
 
+  // Token de tarjeta/Yape (flujo síncrono) hasta que se registre la donación.
+  const tokenPagoRef = useRef(null)
+
   function reset() {
     setStep('monto')
     setMonto('')
@@ -24,11 +46,96 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
     setNombre('')
     setApellido('')
     setAutoriza(false)
+    tokenPagoRef.current = null
   }
 
   function handleClose() {
     onClose()
     setTimeout(reset, 250)
+  }
+
+  // ── Crea la Orden en el backend (necesaria para que el Checkout ──────
+  // ── muestre la pestaña de billeteras móviles: Yape-QR, Plin, etc.) ───
+  async function crearOrden(montoNum) {
+    const res = await fetch(`${API_BASE}/api/donaciones/orden`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proyecto: PROYECTO,
+        monto: montoNum,
+        fuente: PROYECTO,
+        anonimo: false,
+      }),
+    })
+    const data = await res.json()
+    if (!data.ok) throw new Error(data.error || 'No se pudo generar la orden de pago.')
+    return data // { order_id, order_number, donacion_id }
+  }
+
+  // ── Abre el Culqi Checkout real: tarjeta/Yape (token) + billetera (QR) ──
+  async function abrirCulqiCheckout(montoNum) {
+    if (!config.culqi_public_key) {
+      setError('Los pagos no están disponibles en este momento. Intenta más tarde.')
+      setStep('monto')
+      return
+    }
+
+    try {
+      let orderId = null
+      // La Orden solo se crea si el backend ya soporta billeteras (culqi_enabled).
+      // Si por algún motivo falla la creación de la orden, igual dejamos
+      // continuar con tarjeta/Yape (que no la necesitan).
+      try {
+        const orden = await crearOrden(montoNum)
+        orderId = orden.order_id
+      } catch (err) {
+        console.warn('No se pudo crear la orden (billetera no disponible esta vez):', err)
+      }
+
+      await cargarScript('https://checkout.culqi.com/js/v4')
+
+      window.Culqi.publicKey = config.culqi_public_key
+      window.Culqi.settings({
+        title: 'Contribución Voluntaria al Proyecto Puente Calicanto',
+        currency: 'PEN',
+        amount: Math.round(montoNum * 100),
+        ...(orderId ? { order: orderId } : {}),
+      })
+      window.Culqi.options({
+        lang: 'auto',
+        installments: false,
+        paymentMethods: {
+          tarjeta: true,
+          yape: true,
+          bancaMovil: false,
+          agente: false,
+          billetera: Boolean(orderId), // Yape-QR / Plin — requiere la orden
+          cuotealo: false,
+        },
+      })
+
+      window.culqi = function () {
+        if (window.Culqi.token) {
+          // Tarjeta o Yape por token: seguimos el flujo síncrono de siempre.
+          tokenPagoRef.current = window.Culqi.token.id
+          window.Culqi.close()
+          setStep('datos')
+        } else if (window.Culqi.order) {
+          // Billetera (QR): el pago se confirma después, vía webhook.
+          window.Culqi.close()
+          setStep('pendiente_billetera')
+        } else if (window.Culqi.error) {
+          console.error('Error de Culqi:', window.Culqi.error)
+          setError('No se pudo procesar el pago. Intenta de nuevo.')
+          setStep('monto')
+        }
+      }
+
+      window.Culqi.open()
+    } catch {
+      setError('No se pudo cargar el formulario de pago. Revisa tu conexión.')
+      setStep('monto')
+    }
   }
 
   function handleContinuarMonto(e) {
@@ -44,13 +151,7 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
     }
     setError('')
     setStep('pago')
-
-    // SIMULACIÓN: Se mantiene mientras no se tengan los tokens de Culqui
-    setProcesando(true)
-    setTimeout(() => {
-      setProcesando(false)
-      setStep('datos')
-    }, 1400)
+    abrirCulqiCheckout(valor)
   }
 
   async function handleFinalizar() {
@@ -62,6 +163,12 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
       setError('Ingresa tu nombre, o marca "Donar en anonimato".')
       return
     }
+    if (!tokenPagoRef.current) {
+      setError('No se encontró el pago. Intenta de nuevo desde el inicio.')
+      setStep('monto')
+      return
+    }
+
     setError('')
     setProcesando(true)
 
@@ -78,11 +185,13 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          proyecto: 'puente-calicanto',
+          proyecto: PROYECTO,
           nombre: donante.nombre,
           monto: donante.monto,
           anonimo: donante.anonimo,
-          fuente: 'puente-calicanto',
+          fuente: PROYECTO,
+          token_pago: tokenPagoRef.current,
+          metodo_pago: 'tarjeta',
         }),
       })
 
@@ -91,6 +200,13 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
       if (!data.ok) {
         setError(data.error || 'Hubo un error al registrar tu donación. Intenta de nuevo.')
         setProcesando(false)
+        return
+      }
+
+      if (data.requiere_3ds) {
+        setError('Tu banco pide un paso extra de verificación. Vuelve a intentarlo desde el inicio.')
+        setProcesando(false)
+        setStep('monto')
         return
       }
     } catch {
@@ -181,7 +297,7 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
                   type="submit"
                   className="hover-lift mt-6 w-full rounded-lg bg-battle/90 py-3.5 font-label text-sm font-semibold text-parchment transition hover:bg-battle-bright"
                 >
-                  Continuar con Culqui
+                  Continuar
                 </button>
               </form>
             )}
@@ -190,8 +306,29 @@ export default function DonarModal({ open, onClose, onDonacionCompletada }) {
               <div className="flex flex-col items-center py-8 text-center">
                 <div className="h-9 w-9 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
                 <p className="mt-5 font-body text-[14px] text-parchment/70">
-                  Procesando tu pago de S/ {monto} de forma segura…
+                  Abriendo el formulario para su donacion . . .
                 </p>
+              </div>
+            )}
+
+            {step === 'pendiente_billetera' && (
+              <div className="flex flex-col items-center py-6 text-center">
+                <Clock className="text-gold-bright" size={40} />
+                <h3 className="mt-4 font-display text-xl font-semibold text-parchment">
+                  Confirmando tu pago…
+                </h3>
+                <p className="mt-2 font-body text-[13.5px] text-parchment/60">
+                  Estamos esperando la confirmación de tu billetera móvil.
+                  Puede tardar unos segundos a un par de minutos. No hace
+                  falta que esperes aquí — su donación quedará registrada
+                  apenas se confirme.
+                </p>
+                <button
+                  onClick={handleClose}
+                  className="hover-lift mt-6 rounded-lg border border-gold/40 px-6 py-2.5 font-label text-sm font-semibold text-parchment transition hover:bg-gold/10"
+                >
+                  Cerrar
+                </button>
               </div>
             )}
 
